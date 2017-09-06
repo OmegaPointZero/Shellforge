@@ -1,6 +1,6 @@
 # Shellforge
 
-Shellforge is a simple python script for shellcoders that generates shellcode via a fully editable .asm file, with access to the .o and raw executable as well. It's a perfect tool to quickly generate a quick and dirty execve shellcode as a starting point for your payload. Requires nasm and ld to be installed on the host machine. Written and tested on Ubuntu, Mint and Kali Linux.
+Shellforge is a simple python script for shellcoders that generates shellcode via a fully editable .asm file, with access to the .o and raw executable as well. It's a perfect tool to quickly generate a quick and dirty execve shellcode as a starting point for your payload, and it conveniently avoids null-bytes by default. Requires nasm and ld to be installed on the host machine. Written and tested on Ubuntu, Mint and Kali Linux.
 
 # How to use it
 
