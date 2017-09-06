@@ -1,70 +1,88 @@
-import sys
 import os
+import sys
 
-def help():
-	print """
-	Welcome to shellforge.py -- Version 0.85 -- an execve shellcoder written
-	in python without using C. Here's how to use it:
+print "Input the absolute path to the executable,\nfollowed by standard command-line arguments:\n"
+arg_string = raw_input("> ")
 
- 	$ python shellforge.py /path/to/executable outputfilename
+global shell
+global args
+shell = ''
+registers = ['ESI', 'EDI', 'EDX', 'ECX']
+used_registers = []
+args = arg_string.split(' ')
 
-	The first argument is the absolute path that you want to pack into the 
-	execve shellcode. The output filename is optional; if you ignore it 
-	ShellForge will opt to use the name of the executable in the path.
+def parseargs(myarg):
 
-	The output is a total of 5 files. $ shellforge /bin/foo bar will write
-	a shellcode in assembly to pass /bin/foo to execve, and save it as 
-	bar.asm. It then compiles it with nasm to make bar.o, which is then 
-	linked with ld to make the executable bar. Shellforge then quickly writes
-	the bash script bar.sh and runs it, which opens bar in objectdump,
-	extracts the bytes for the shellcode, and writes them to bar.bin.
+   global shell
+   myarg = myarg[::-1].encode('hex')
+   while myarg:
+       if len(myarg) >= 8:
+           shell = ''.join((shell,'\tPUSH\t\t0x%s\t\t; %s\n' % (myarg[:8], myarg[:8].decode('hex')) ))
+           myarg = myarg[8:]
+       elif len(myarg) == 6:
+           shell = ''.join((shell,'\tMOV\t\tECX, 0x%s\t\t; %s\n\tSHR\t\tECX, 0x8\n\tPUSH\t\tECX\n' % (''.join((myarg[:6],'ff')), myarg[:6].decode('hex')) ))
+           myarg = myarg[6:]
+       elif len(myarg) == 4:
+           shell = ''.join((shell,'\tMOV\t\tCX, 0x%s\t\t; %s\n\tPUSH\t\tECX\n' % (myarg[:4], myarg[:4].decode('hex'))))
+           myarg = myarg[4:]
+       elif len(myarg) == 2:
+           shell = ''.join((shell,'\tMOV\t\tCL, 0x%s\t\t; %s\n\tPUSH\t\tECX\n' % (myarg[:2], myarg[:2].decode('hex'))))
+           myarg = myarg[2:]
+          
+def make_code():
 
-	Press CTRL^C to quit, or write the path to an executable to encode\n
-	"""
-	instring = raw_input("> ")
-	filename = instring.split('/')[-1]
-	assemble(instring, filename)
+   global shell
+   shell = ''.join((shell, 'GLOBAL _start\nSECTION .TEXT\n\n_start:\n\tXOR\t\tEAX, EAX\n\tPUSH\t\tEAX\n')) # Global prefix and EAX 0'd
+   while (len(args[0]) % 4 != 0):
+       args[0] = ''.join(('/',args[0]))
+   parseargs(args[0])
+   shell = ''.join((shell, '\tMOV\t\tEBX, ESP\n\tPUSH\t\tEAX\n'))
+   args.pop(0)
+  
+   while args:
+       if(len(args)>len(registers)):
+           print "Too many args! Aborting..."
+           sys.exit()
 
-def read_input():
-	filename = ""
-	instring = "" 
-	if len(sys.argv) == 3:
-		instring = sys.argv[1]
-		filename = sys.argv[2]
-		assemble(instring, filename)
-	elif len(sys.argv) == 2:
-		instring = sys.argv[1]
-		filename = str(sys.argv[1]).split('/')[-1]
-		assemble(instring, filename)
-	elif len(sys.argv) == 1:
-		help()
+       if len(args[0]) % 4 != 0 and len(args[0]) > 4:
+           if len(args[0]) % 4 == 3:
+               parseargs(args[0][-3:])
+               parseargs(args[0][:-3])
+           elif len(args[0]) % 2 == 0:
+               parseargs(args[0][-2:])
+               parseargs(args[0][:-2])
+           elif len(args[0]) % 4 == 1:
+               parseargs(args[0][-1:])
+               parseargs(args[0][:-1])
+       elif len(args[0]) <= 4:
+           parseargs(args[0])
 
-def get_shellcode(filename):
-	shellcode = open("%ssh" % filename, "w")
-	shellcode.write("for i in `objdump -d %s | tr '\\t' ' ' | tr ' ' '\\n' | egrep '^[0-9a-f]{2}$' ` ; do echo -n \"\\x$i\" ; done" % filename)
-	shellcode.close()
-	os.system("mv %ssh %s.sh && chmod +x %s.sh" % (filename, filename, filename))
-	os.system("./%s.sh > %s.bin" % (filename,filename) )
+       shell = ''.join((shell,'\tMOV\t\t%s, ESP\n' % registers[0]))
+       used_registers.append(registers[0])
+       registers.pop(0)
+       args.pop(0)
 
-def write_file(filename, shellcode):
-	file = open("%s.asm" % filename, "w")
-	file.write(shellcode)
-	file.close()
-	open(filename, "w")
-	os.system("nasm -f elf -o %s.o %s.asm" % ((filename,filename)))
-	os.system("ld -m elf_i386 -o %s %s.o"% (filename, filename))
-	get_shellcode(filename)	
+   while used_registers:
+       shell = ''.join((shell, '\tPUSH\t\tEAX\n'))
+       shell = ''.join((shell,'\tPUSH\t\t%s\n' % used_registers[0]))
+       used_registers.pop(0)  
+   shell = ''.join((shell,'\tPUSH\t\tEBX\n\tMOV\t\tECX, ESP\n\tMOV\t\tAL, 0x0B\n\tINT\t\t0x80\n'))
 
-def assemble(instring, filename):
-	shellcode = ""
-	shellcode = "".join((shellcode, "global _start\nsection .text\n\n_start:\n\txor\t\teax,eax\n\tpush\t\teax\n"))
-	while (len(instring) % 4 != 0):
-		instring = "/" + instring
-	instring = instring[::-1].encode('hex')
-	while instring:
-		shellcode = "".join((shellcode, "\tpush\t\t0x%s ; %s\n" % (instring[:8], instring[:8].decode('hex') ) ))
-		instring = instring[8:]
-	shellcode = "".join((shellcode, "\tmov\t\tebx, esp\n\tpush\t\teax\n\tmov\t\tedx, esp\n\tpush\t\tebx\n\tmov\t\tecx, esp\n\tmov\t\tal, 0x0b; execve syscall number\n\tint\t\t0x80"))	
-	write_file(filename, shellcode)
+def write_files():
+   print '\nAssembly generated. Please enter an output filename.'
+   outfile = raw_input('> ')
+   os.system('mkdir shellcode_%s' % outfile)
+   file = open('shellcode_%s/%s.asm' % (outfile, outfile), 'w')
+   file.write(shell)
+   file.close()
+   os.system('nasm -f elf shellcode_%s/%s.asm -o shellcode_%s/%s.o' % (outfile, outfile, outfile, outfile))
+   os.system('ld -m elf_i386 shellcode_%s/%s.o -o shellcode_%s/%s' % (outfile, outfile, outfile, outfile))
+   shellcode = open(('shellcode_%s/%s.sh' % (outfile, outfile)), 'w')
+   shellcode.write("for i in `objdump -D %s | tr '\\t' ' ' | tr ' ' '\\n' | egrep '^[0-9a-f]{2}$' ` ; do echo -n \"\\x$i\" ; done\n" % outfile)
+   shellcode.close()
+   os.system('chmod +x shellcode_%s/%s.sh && cd shellcode_%s && ./%s.sh > %s.bin && cd ../' % (outfile, outfile, outfile, outfile, outfile))
+   os.system('rm shellcode_%s/%s.sh' % (outfile, outfile))
+   os.system('rm shellcode_%s/%s.o' % (outfile, outfile))
 
-read_input()
+make_code()
+write_files()
