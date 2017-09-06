@@ -6,7 +6,7 @@ Shellforge is a simple python script for shellcoders that generates shellcode vi
 
 I started writing shellforge when I was writing shellcode regularly. It's a script to quickly generate shellcode for a simple execve syscall.
 
-Currently, it requires you to input the regular command-line option you want to encode (ie, "ls -la"), as well as the absolute path to the executable itself (/bin/ls).
+Currently, just run "python shellforge.py", and follow the prompts to input the regular command-line option you want to encode (ie, "ls -la"), as well as the absolute path to the executable itself (/bin/ls).
 
 The assembly code is written to an .asm file. Shellforge then calls nasm to compile this .asm file into a .o object file, then uses the linker ld to link it into an executable.
 
